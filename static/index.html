@@ -1,0 +1,678 @@
+<html>
+  <head>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="https://d3js.org/topojson.v2.min.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Bree+Serif&display=swap");
+      @import url('https://fonts.googleapis.com/css2?family=Bitter:wght@100;400&display=swap');
+      #filters{
+        width: 300px;
+        border-right: rgb(196, 196, 196) solid 2px;
+
+      }
+      #bottom {
+        border-bottom: rgb(196, 196, 196) solid 2px;
+      }
+      #side {
+        border-left: rgb(196, 196, 196) solid 2px;
+        padding-left: 15px;
+        padding-right: 15px;
+      }
+      body {
+        margin: 30px;
+      }
+      .gridlines line {
+        stroke: #bbb;
+      }
+      button {
+        padding: 10px;
+        margin: 2px;
+        border: #d3d6da solid 2px;
+        color: #000000;
+        background-color: #d3d6da;
+        font-weight: bold;
+      }
+      .gridlines .domain {
+        stroke: none;
+      }
+      .row {
+        display: flex;
+        flex-direction: row;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        max-width: 800px;
+      }
+      body {
+        font-family: "Helvetica Neue";
+        font-weight: medium;
+        overflow-x:hidden;
+      }
+      .bar{
+        padding-left: 20px;
+        padding-right: 20px;
+
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: "Bree Serif", serif;
+      }
+      #details {
+        font-family: "Bitter", serif;
+      }
+      p{
+        font-family: "Bitter", serif;
+
+      }
+      #words{
+        font-family: "Bitter", serif;
+        width: 300px;
+        height: 400px;
+        column-count: 2;
+      }
+      .words {
+        padding: 2px;
+        width: 80px;
+        /* margin-bottom: 8px; */
+      }
+      .words:hover{
+        color: green;
+      }
+      button:hover{
+        background-color:rgb(106, 170, 100)
+      }
+    </style>
+  </head>
+  <body>
+    <div id="bottom">
+      <h1>Exploring Wordle Tweets</h1>
+      <p>
+        <strong>Directions:</strong> View the distribution of tweets for each
+        wordle in the months of January and February. We can assume the
+        difficulty of the wordle by looking at the mean, median, or mode of the
+        number of guesses it took people on Twitter to guess the word! Choose
+        which metric you'd like to use, then you can filter by difficulty based
+        on that metric. Also quickly view the individual stats for each wordle
+        to get the breakdown.
+      </p>
+    </div>
+    <div class="row">
+      <div class="col">
+        <div id="filters">
+          <div id="color-choice">
+            <h3>Measure number of guesses by (default is mode):</h3>
+          </div>
+          <div id="dif-buttons">
+            <h3>Filter by difficulty (number of guesses):</h3>
+          </div>
+          <h3>Select specific word:</h3>
+          <div id="words"></div>
+        </div>
+        </div>
+        <div class="col bar">
+            <h3>Total Wordle Tweets Per Day</h3>
+          <div>
+            <svg id="bar" height="600" width="750"></svg>
+          </div>
+        </div>
+
+        <div class="col" id="side">
+          <h3>Legend - Number of Guesses</h3>
+          <svg id="legend" width="400" height="20" ></svg>
+        <div id="details">
+          <h3>Details:</h3>
+          <div id="id">No bar selected</div>
+          <div id="answer"></div>
+          <div id="date"></div>
+          <div id="stats"></div>
+          <div id="num"></div>
+          <h3 id="disthead"></h3>
+          <svg id="dist" width="300" height="300"></svg>
+        </div>
+
+        </div>
+      </div>
+    </div>
+  </body>
+  <script>
+    //MAIN BAR CHART SET UP
+    const barChart = d3.select("svg#bar");
+    const barMargin = { top: 10, right: 30, bottom: 90, left: 90 };
+    const barWidth = barChart.attr("width");
+    const barHeight = barChart.attr("height");
+    const barChartWidth = barWidth - barMargin.left - barMargin.right;
+    const barChartHeight = barHeight - barMargin.top - barMargin.bottom;
+
+    let annotations = barChart.append("g").attr("id", "annotations");
+    let chartArea = barChart
+      .append("g")
+      .attr("id", "chartArea")
+      .attr(
+        "transform",
+        "translate(" + barMargin.left + "," + barMargin.top + ")"
+      );
+
+    const difficulties = [1, 2, 3, 4, 5, 6];
+    const stats = ["mean", "median", "mode"];
+    var currStat = stats[2];
+    var currStatElt = null;
+    var currFilter = "";
+    var currFilterElt = null;
+    var currBar = null;
+    var currBarId;
+
+    const colorScale = d3
+      .scaleOrdinal()
+      .domain(difficulties)
+      .range(["#00bf76", "#07915c", "#8faa64", "#c9b458", "#939598", "#525252"]);
+
+    //MINI DIST SET UP
+    const miniBar = d3.select("svg#dist");
+    const miniMargin = { top: 10, right: 30, bottom: 90, left: 70 };
+    const miniWidth = miniBar.attr("width");
+    const miniHeight = miniBar.attr("height");
+    const miniChartWidth = miniWidth - miniMargin.left - miniMargin.right;
+    const miniChartHeight = miniWidth - miniMargin.left - miniMargin.right;
+    let miniAnnotations = miniBar.append("g").attr("id", "mini-annotations");
+    let miniChartArea = miniBar
+      .append("g")
+      .attr("id", "miniChartArea")
+      .attr(
+        "transform",
+        "translate(" + miniMargin.left + "," + miniMargin.top + ")"
+      );
+
+    let miniScale = d3
+      .scaleBand()
+      .domain(difficulties)
+      .range([0, miniChartWidth])
+      .padding([0.05]);
+
+    let miniBottomAxis = d3.axisBottom(miniScale);
+    miniAnnotations
+      .append("g")
+      .attr("class", "x axis mini")
+      .attr(
+        "transform",
+        `translate(${miniMargin.left},${miniChartHeight + miniMargin.top + 10})`
+      )
+      .call(miniBottomAxis);
+
+    let minileftAxis = d3.axisLeft();
+    let minileftGridlines = d3
+      .axisLeft()
+      .tickSize(-miniChartWidth - 10)
+      .tickFormat("");
+
+    let minileftAxisG = miniAnnotations
+      .append("g")
+      .attr("class", "y axis")
+      .attr(
+        "transform",
+        `translate(${miniMargin.left - 10},${miniMargin.top})`
+      );
+
+    let minileftGridlinesG = miniAnnotations
+      .append("g")
+      .attr("class", "y gridlines")
+      .attr(
+        "transform",
+        `translate(${miniMargin.left - 10},${miniMargin.top})`
+      );
+
+    const requestData = async function () {
+      //LOAD DATA
+      const wordles = await d3.json("wordles_with_dist.json", d3.autoType);
+      wordles.forEach((d) => {
+        d["date"] = timeParser(d["date"]);
+      });
+      console.log(wordles);
+      var filtered_data = filterDifficulty(currFilter, [...wordles]);
+
+      //x-axis scale
+      const dates = d3.map(wordles, (d) => d["date"]);
+      const timeScale = d3
+        .scaleBand()
+        .domain(dates)
+        .range([0, barChartWidth])
+        .padding([0.05]);
+
+      //y-axis scale
+      const tweetExtent = d3.extent(wordles, (d) => d["num_tweets"]);
+      console.log(tweetExtent);
+      const tweetScale = d3
+        .scaleLinear()
+        .domain([0, tweetExtent[1]])
+        .range([barChartHeight, 0]);
+
+      let bottomAxis = d3
+        .axisBottom(timeScale)
+        .tickFormat(d3.timeFormat("%B %d, %Y"));
+        // Axis labels: https://bl.ocks.org/d3noob/23e42c8f67210ac6c678db2cd07a747e
+        chartArea.append("text")             
+        .attr("transform",
+            "translate(" + (barChartWidth/2) + " ," + 
+                           (barChartHeight + barMargin.top + 70) + ")")
+            .style("text-anchor", "middle")
+             .text("Date")
+             .style("font-family", "Bitter")
+
+             chartArea.append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 0 - barMargin.left)
+      .attr("x",0 - (barChartHeight / 2))
+      .attr("dy", "1em")
+      .style("text-anchor", "middle")
+      .style("font-family", "Bitter")
+      .text("Number of Tweets");
+             
+
+      let bottomAxisG = annotations
+        .append("g")
+        .attr("class", "x axis")
+        .attr(
+          "transform",
+          `translate(${barMargin.left},${barChartHeight + barMargin.top + 10})`
+        );
+
+      let leftAxis = d3.axisLeft(tweetScale);
+      annotations
+        .append("g")
+        .attr("class", "y axis")
+        .attr("transform", `translate(${barMargin.left - 10},${barMargin.top})`)
+        .call(leftAxis);
+
+      let leftGridlines = d3
+        .axisLeft(tweetScale)
+        .tickSize(-barChartWidth - 10)
+        .tickFormat("");
+      annotations
+        .append("g")
+        .attr("class", "y gridlines")
+        .attr("transform", `translate(${barMargin.left - 10},${barMargin.top})`)
+        .call(leftGridlines);
+
+      function updateBars() {
+        console.log(filtered_data);
+        const dates = d3.map(wordles, (d) => d["date"]);
+        const timeScale = d3
+          .scaleBand()
+          .domain(dates)
+          .range([0, barChartWidth])
+          .padding([0.05]);
+
+        bottomAxis.scale(timeScale);
+        bottomAxisG.transition().call(bottomAxis);
+
+        chartArea
+          .selectAll("rect.bar")
+          .data(filtered_data)
+          .join(
+            (enter) =>
+              enter
+                .append("rect")
+                .attr("class", "bar")
+                .attr("fill", (d) => colorScale(Math.round(d[currStat])))
+                .attr("x", (d) => timeScale(d["date"]))
+                .attr("y", (d) => tweetScale(d["num_tweets"]))
+                .attr(
+                  "height",
+                  (d) => barChartHeight - tweetScale(d["num_tweets"])
+                )
+                .attr("width", timeScale.bandwidth())
+                .attr("opacity", 0)
+                .attr("id", (d) => d["id"])
+                .attr("stroke-width", "3")
+                .attr("stroke", (d) => {
+                  if (d.id === currBarId) {
+                    return "black";
+                  } else {
+                    return "";
+                  }
+                })
+                .on("click", function (d) {
+                  updateSelected(Number(d3.select(this).attr("id")));
+                })
+                .call((enter) => enter.transition().attr("opacity", 1)),
+            (update) =>
+              update.call((update) => {
+                update
+                  // .transition()
+                  .attr("fill", (d) => colorScale(Math.round(d[currStat])))
+                  .attr("x", (d) => timeScale(d["date"]))
+                  .attr("y", (d) => tweetScale(d["num_tweets"]))
+                  .attr(
+                    "height",
+                    (d) => barChartHeight - tweetScale(d["num_tweets"])
+                  )
+                  .attr("width", timeScale.bandwidth())
+                  .attr("id", (d) => d["id"])
+                  .attr("stroke-width", "3")
+                  .attr("stroke", (d) => {
+                    if (d.id === currBarId) {
+                      return "black";
+                    } else {
+                      return "";
+                    }
+                  });
+              }),
+            (exit) =>
+              exit.call((exit) => exit.transition().attr("opacity", 0).remove())
+          );
+        annotations
+          .selectAll("text")
+          .style("text-anchor", "end")
+          .attr("dx", "-.8em")
+          .attr("dy", ".15em")
+          .attr("transform", "rotate(-25)");
+      }
+
+      function wordClicked() {
+        word = d3.select(this);
+        id = Number(word.attr("id"));
+        updateSelected(id);
+      }
+
+      function updateWords() {
+        // words = d3.map(filtered_data, d => d['answer'])
+        // console.log(words)
+        d3.select("div#words")
+          .selectAll("div.words")
+          .data(filtered_data)
+          .join("div")
+          .attr("class", "words")
+          .attr("x", 0)
+          .attr("y", 0)
+          .attr("id", (d) => d["id"])
+          .text((d) => d["answer"])
+          .style("background-color", (d) => {
+            if (d.id === currBarId) {
+              return "#6aaa64";
+            } else {
+              return "";
+            }
+          })
+          .style("font-weight", (d) => {
+            if (d.id === currBarId) {
+              return "bold";
+            } else {
+              return "";
+            }
+          })
+          .style("color", (d) => {
+            if (d.id === currBarId) {
+              return "white";
+            } else {
+              return "";
+            }
+          })
+          .on("click", wordClicked);
+      }
+
+      function diffButtonClicked(d, elt) {
+        newFilterElt = elt; //d3.select(this);
+        if (currFilterElt === null) {
+          currFilterElt = newFilterElt;
+          currFilterElt.style("background-color", "#6aaa64");
+          currFilterElt.style("color", "white");
+          currFilter = d;
+        } else if (currFilterElt.text() === newFilterElt.text()) {
+          currFilterElt.style("background-color", "");
+          currFilterElt.style("color", "");
+          currFilterElt = null;
+          currFilter = "";
+        } else {
+          currFilterElt.style("color", "");
+          currFilterElt.style("background-color", "");
+          currFilterElt = newFilterElt;
+          currFilterElt.style("color", "white");
+          currFilterElt.style("background-color", "#6aaa64");
+          currFilter = d;
+        }
+
+        filtered_data = filterDifficulty(currFilter, [...wordles]);
+
+        updateWords();
+        updateBars();
+      }
+
+      function choiceButtonClicked(stat, elt) {
+        newStatElt = elt; //d3.select(this);
+        if (currStatElt === null) {
+          d3.select("button#mode").style("background-color", "");
+          d3.select("button#mode").style("color", "");
+          currStatElt = newStatElt;
+          currStatElt.style("color", "white");
+          currStatElt.style("background-color", "#6aaa64");
+          currStat = stat;
+        } else if (currStatElt.text() === newStatElt.text()) {
+          currStatElt.style("background-color", "");
+          currStatElt.style("color", "");
+          currStatElt = d3.select("button#mode");
+          currStat = "mode";
+          currStatElt.style("color", "white");
+          currStatElt.style("background-color", "#6aaa64");
+        } else {
+          currStatElt.style("color", "");
+          currStatElt.style("background-color", "");
+          currStatElt = newStatElt;
+          currStatElt.style("color", "white");
+          currStatElt.style("background-color", "#6aaa64");
+          currStat = stat;
+        }
+
+        filtered_data = filterDifficulty(currFilter, [...wordles]);
+        updateBars();
+      }
+
+      function createFilters() {
+        button_div = d3.select("div#dif-buttons");
+        difficulties.forEach((d) => {
+          button_div
+            .append("button")
+            .text(d)
+            .on("click", function () {
+              diffButtonClicked(d, d3.select(this));
+            });
+        });
+        button_div
+          .append("button")
+          .text("Clear")
+          .on("click", function () {
+            if (currFilter === "") {
+              return;
+            }
+            currFilter = "";
+            currFilterElt.style("background-color", "");
+            currFilterElt.style("color", "");
+            currFilterElt = null;
+
+            filtered_data = filterDifficulty(currFilter, [...wordles]);
+
+            updateWords();
+            updateBars();
+          });
+
+        color_div = d3.select("div#color-choice");
+        stats.forEach((stat) => {
+          color_div
+            .append("button")
+            .attr("id", stat)
+            .text(stat)
+            .style("background-color", () => {
+              if (stat === currStat) {
+                return "#6aaa64";
+              } else {
+                return "";
+              }
+            })
+            .style("color", () => {
+              if (stat === currStat) {
+                return "white";
+              } else {
+                return "black";
+              }
+            })
+            .on("click", function () {
+              choiceButtonClicked(stat, d3.select(this));
+            });
+        });
+      }
+
+      // DETAILS CODE
+      function updateSelected(idNumber) {
+        if (currBarId === "") {
+          currBarId = idNumber;
+        } else if (currBarId === idNumber) {
+          currBarId = "";
+        } else {
+          currBarId = idNumber;
+        }
+
+        updateWords();
+        updateBars();
+        updateDetails(currBarId);
+      }
+
+      function updateDetails(idNumber) {
+        console.log(idNumber);
+        let details = d3.select("#details");
+        let formatTime = d3.timeFormat("%B %d, %Y");
+
+        if (idNumber === "") {
+          details.select("#id").text("No bar selected");
+          details.select("#answer").text("");
+          details.select("#date").text("");
+          details.select("#stats").text("");
+          details.select("#num").text("");
+          details.select("#disthead").text("")
+          details.select("#dist").attr("visibility", "hidden");
+        } else {
+          wordle = wordles.filter((d) => d["id"] === idNumber)[0];
+          console.log(wordle);
+          details.select("#answer").text(`Answer: ${wordle["answer"]}`);
+          details.select("#id").text(`Wordle ID: ${wordle["id"]}`);
+          details.select("#date").text(`Date: ${formatTime(wordle["date"])}`);
+          details
+            .select("#stats")
+            .text(
+              `Mean: ${wordle["mean"].toFixed(2)}, Median: ${
+                wordle["median"]
+              }, Mode: ${wordle["mode"]}`
+            );
+          details
+            .select("#num")
+            .text(`Number of tweets: ${wordle["num_tweets"]}`);
+          details.select("#disthead").text("Number tweets per guesses")
+
+          updateMini(wordle);
+        }
+      }
+
+      createFilters();
+      updateWords();
+      updateBars();
+      updateDetails("");
+      //END OF REQUEST DATA
+    };
+
+    requestData();
+    createLegend();
+
+    function updateMini(data) {
+      console.log(data);
+
+      d3.select("svg#dist").attr("visibility", "");
+
+      let totalExtent = d3.extent(data["dist"]);
+      let yScale = d3
+        .scaleLinear()
+        .domain(totalExtent)
+        .range([miniChartHeight, 0]);
+
+      minileftAxis.scale(yScale);
+      minileftAxisG.transition().call(minileftAxis);
+      minileftGridlines.scale(yScale);
+      minileftGridlinesG.transition().call(minileftGridlines);
+      miniChartArea.append("text")             
+        .attr("transform",
+            "translate(" + (miniChartWidth/2) + " ," + 
+                           (miniChartHeight + miniMargin.top + 40) + ")")
+            .style("text-anchor", "middle")
+             .text("Number of Guesses");
+      miniChartArea.append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 0 - miniMargin.left)
+      .attr("x",0 - (miniChartHeight / 2))
+      .attr("dy", "1em")
+      .style("text-anchor", "middle")
+      .text("Number of Tweets");
+      miniChartArea
+        .selectAll("rect.minibar")
+        .data(data["dist"])
+        .join(
+          (enter) =>
+            enter
+              .append("rect")
+              .attr("class", "minibar")
+              .attr("fill", (d, i) => colorScale(i+1))
+              .attr("x", (d, i) => miniScale(i+1))
+              .attr("y", (d) => yScale(d))
+              .attr("height", (d) => miniChartHeight - yScale(d))
+              .attr("width", miniScale.bandwidth())
+              .attr("opacity", 0)
+              .call((enter) => enter.transition().attr("opacity", 1)),
+          (update) =>
+            update.call((update) =>
+              update
+                .transition()
+                .attr("fill", (d, i) => colorScale(i + 1))
+                .attr("x", (d, i) => miniScale(i+1))
+                .attr("y", (d) => yScale(d))
+                .attr("height", (d) => miniChartHeight - yScale(d))
+                .attr("width", miniScale.bandwidth())
+            ),
+          (exit) =>
+            exit.call((exit) => exit.transition().attr("opacity", 0).remove())
+        );
+    }
+
+    function createLegend() {
+      const legend = d3.select("#legend");
+      colorScale.domain().forEach((d, i) => {
+        let item = legend.append("g");
+        item
+          .append("rect")
+          .attr("x", i * 40)
+          .attr("y", 0)
+          .attr("width", 15)
+          .attr("height", 15)
+          .attr("fill", colorScale(d));
+
+        item
+          .append("text")
+          .text(d)
+          .attr("x", i * 40 + 20)
+          .attr("y", 15);
+      });
+    }
+
+    //Dilter data by difficulty
+    function filterDifficulty(diff, data) {
+      if (diff === "") {
+        return data;
+      }
+      filtered_data = data.filter((d) => {
+        return Math.round(d[currStat]) === Number(diff);
+      });
+      return filtered_data;
+    }
+
+    function timeParser(s) {
+      parser = d3.timeParse("%Y-%m-%d");
+      return parser(s);
+    }
+  </script>
+</html>
